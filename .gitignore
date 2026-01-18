@@ -1,4 +1,7 @@
 target/
 storage/
 secrets/
+logs/
+*.log
+*.db
 .env

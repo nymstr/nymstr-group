@@ -56,11 +56,12 @@ This document provides a high-level overview of the **nymstr-groupd** server, de
 - Enables WAL mode and foreign key enforcement.
 
 ### CryptoUtils (`src/crypto_utils.rs`)
+- Uses PGP (pgp crate 0.16) for:
+  - Ed25519 keypair generation (~128-bit security)
+  - PGP message signing and verification
 - Uses OpenSSL for:
-  - ECDSA keypair generation (P-256)
   - AES-256-GCM encryption of private keys
   - PBKDF2-HMAC-SHA256 for key derivation
-  - Message signing and verification
 - Stores encrypted private keys and public keys in the filesystem.
 
 ### MessageUtils (`src/message_utils.rs`)
@@ -89,7 +90,7 @@ This document provides a high-level overview of the **nymstr-groupd** server, de
 | Mixnet Transport      | nym-sdk                   |
 | Database              | SQLite (via `sqlx`)       |
 | Pub/Sub Messaging     | Redis                     |
-| Crypto Primitives     | OpenSSL (ECDSA, AES-GCM)  |
+| Crypto Primitives     | PGP (Ed25519), OpenSSL (AES-GCM) |
 | Key Derivation        | PBKDF2-HMAC-SHA256        |
 | Configuration Loader  | Environment variables (std::env) |
 | Logging               | fern (+ log, chrono)      |
