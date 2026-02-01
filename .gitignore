@@ -2,6 +2,7 @@ target/
 storage/
 secrets/
 logs/
+config/
 *.log
 *.db
 .env
