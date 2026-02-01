@@ -12,35 +12,51 @@ use pgp::composed::{
 use pgp::packet::{SignatureConfig, SignatureType, Subpacket, SubpacketData};
 use pgp::types::{Password, KeyDetails};
 use rand::thread_rng;
+use secrecy::{ExposeSecret, SecretString};
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
+use zeroize::Zeroize;
 
 /// Utility for PGP key generation, signing, and signature verification.
-#[derive(Clone)]
+/// Password is stored securely and zeroed from memory when dropped.
 pub struct CryptoUtils {
     key_dir: PathBuf,
     username: String,
-    password: String,
+    password: SecretString,
+}
+
+impl Clone for CryptoUtils {
+    fn clone(&self) -> Self {
+        Self {
+            key_dir: self.key_dir.clone(),
+            username: self.username.clone(),
+            password: SecretString::new(self.password.expose_secret().clone()),
+        }
+    }
 }
 
 impl CryptoUtils {
     /// Initialize with the key directory, server username, and passphrase.
-    pub fn new(key_dir: PathBuf, username: String, password: String) -> Result<Self> {
+    /// The password is stored securely and will be zeroed from memory when dropped.
+    pub fn new(key_dir: PathBuf, username: String, mut password: String) -> Result<Self> {
         if !key_dir.exists() {
             fs::create_dir_all(&key_dir)?;
         }
+        // Convert to SecretString and zeroize the original
+        let secret_password = SecretString::new(password.clone());
+        password.zeroize();
         Ok(Self {
             key_dir,
             username,
-            password,
+            password: secret_password,
         })
     }
 
     fn derive_key(&self, salt: &[u8]) -> Result<[u8; 32]> {
         let mut key = [0u8; 32];
         pbkdf2_hmac(
-            self.password.as_bytes(),
+            self.password.expose_secret().as_bytes(),
             salt,
             100_000,
             MessageDigest::sha256(),
@@ -89,7 +105,7 @@ impl CryptoUtils {
 
     /// Convert password to PGP Password type
     fn to_pgp_password(&self) -> Password {
-        Password::from(self.password.as_str())
+        Password::from(self.password.expose_secret().as_str())
     }
 
     /// Generate and store a new PGP key pair using Ed25519.

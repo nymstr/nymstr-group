@@ -135,10 +135,25 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
     if let Some(parent) = secret_path_buf.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    if !secret_path_buf.exists() {
-        std::fs::write(&secret_path_buf, "")?;
-    }
-    let password = std::fs::read_to_string(&secret_path_buf)?.trim().to_string();
+    let password = if !secret_path_buf.exists() {
+        // Generate a secure random password on first run
+        use rand::distributions::{Alphanumeric, DistString};
+        let generated = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+        std::fs::write(&secret_path_buf, &generated)?;
+        #[cfg(unix)]
+        std::fs::set_permissions(&secret_path_buf, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
+        log::info!("Generated new encryption password and stored at: {}", secret_path_buf.display());
+        generated
+    } else {
+        let pwd = std::fs::read_to_string(&secret_path_buf)?.trim().to_string();
+        if pwd.is_empty() {
+            anyhow::bail!(
+                "Encryption password file {} is empty. Delete it and restart to generate a new one.",
+                secret_path_buf.display()
+            );
+        }
+        pwd
+    };
     let client_id = std::env::var("NYM_CLIENT_ID").unwrap_or_else(|_| "groupd".to_string());
     let crypto = CryptoUtils::new(PathBuf::from(&keys_dir), client_id.clone(), password)?;
 
@@ -298,10 +313,25 @@ async fn run_server(group_config: GroupConfig) -> anyhow::Result<()> {
     if let Some(parent) = secret_path_buf.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    if !secret_path_buf.exists() {
-        std::fs::write(&secret_path_buf, "")?;
-    }
-    let password = std::fs::read_to_string(&secret_path_buf)?.trim().to_string();
+    let password = if !secret_path_buf.exists() {
+        // Generate a secure random password on first run
+        use rand::distributions::{Alphanumeric, DistString};
+        let generated = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+        std::fs::write(&secret_path_buf, &generated)?;
+        #[cfg(unix)]
+        std::fs::set_permissions(&secret_path_buf, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
+        log::info!("Generated new encryption password and stored at: {}", secret_path_buf.display());
+        generated
+    } else {
+        let pwd = std::fs::read_to_string(&secret_path_buf)?.trim().to_string();
+        if pwd.is_empty() {
+            anyhow::bail!(
+                "Encryption password file {} is empty. Delete it and restart to generate a new one.",
+                secret_path_buf.display()
+            );
+        }
+        pwd
+    };
 
     let client_id = std::env::var("NYM_CLIENT_ID").unwrap_or_else(|_| "groupd".to_string());
     let crypto = CryptoUtils::new(PathBuf::from(&keys_dir), client_id.clone(), password)?;
