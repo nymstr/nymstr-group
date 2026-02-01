@@ -7,11 +7,17 @@ on:
     types: [opened]
 
 jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug values
+        run: |
+          echo "event_name: ${{ github.event_name }}"
+          echo "issue.author_association: ${{ github.event.issue.author_association }}"
+          echo "pr.author_association: ${{ github.event.pull_request.author_association }}"
+
   add-to-project:
     runs-on: ubuntu-latest
-    if: |
-      contains(fromJSON('["MEMBER", "OWNER", "COLLABORATOR"]'), github.event.issue.author_association) ||
-      contains(fromJSON('["MEMBER", "OWNER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     steps:
       - uses: actions/add-to-project@v1.0.2
         with:
