@@ -9,13 +9,6 @@ on:
 jobs:
   add-to-project:
     runs-on: ubuntu-latest
-    if: |
-      github.event.issue.author_association == 'MEMBER' ||
-      github.event.issue.author_association == 'OWNER' ||
-      github.event.issue.author_association == 'COLLABORATOR' ||
-      github.event.pull_request.author_association == 'MEMBER' ||
-      github.event.pull_request.author_association == 'OWNER' ||
-      github.event.pull_request.author_association == 'COLLABORATOR'
     steps:
       - uses: actions/add-to-project@v1.0.2
         with:
