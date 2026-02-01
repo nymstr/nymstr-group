@@ -148,6 +148,7 @@ impl CryptoUtils {
     }
 
     /// Sign a message and return an ASCII-armored signature.
+    /// PGP handles hashing internally - we sign the raw message.
     pub fn sign_message(&self, _username: &str, message: &str) -> Result<String> {
         log::info!(
             "Signing message for '{}' (length: {} bytes)",
@@ -223,6 +224,7 @@ impl CryptoUtils {
 
         let (public_key, _headers) = SignedPublicKey::from_string(public_key_armored)?;
 
+        // PGP handles hashing internally - verify against raw message
         match signature.verify(&public_key.primary_key, message.as_bytes()) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),

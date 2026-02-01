@@ -4,7 +4,6 @@ mod db_utils;
 mod log_config;
 mod message_utils;
 mod rate_limiter;
-mod response;
 
 use crate::config::GroupConfig;
 use crate::crypto_utils::CryptoUtils;
