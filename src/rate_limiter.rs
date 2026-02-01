@@ -46,3 +46,44 @@ impl RateLimiter {
         self.attempts.retain(|_, v| !v.is_empty());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rate_limiter_allows_within_limit() {
+        let mut limiter = RateLimiter::new(3, 60);
+        assert!(limiter.check_and_record("test"));
+        assert!(limiter.check_and_record("test"));
+        assert!(limiter.check_and_record("test"));
+    }
+
+    #[test]
+    fn test_rate_limiter_blocks_at_limit() {
+        let mut limiter = RateLimiter::new(2, 60);
+        assert!(limiter.check_and_record("test"));
+        assert!(limiter.check_and_record("test"));
+        assert!(!limiter.check_and_record("test")); // Should be blocked
+    }
+
+    #[test]
+    fn test_rate_limiter_separate_keys() {
+        let mut limiter = RateLimiter::new(1, 60);
+        assert!(limiter.check_and_record("key1"));
+        assert!(!limiter.check_and_record("key1")); // Blocked
+        assert!(limiter.check_and_record("key2")); // Different key, allowed
+    }
+
+    #[test]
+    fn test_rate_limiter_cleanup() {
+        let mut limiter = RateLimiter::new(10, 60);
+        limiter.check_and_record("test");
+        assert!(!limiter.attempts.is_empty());
+
+        // Manually clear the attempts to simulate expiry
+        limiter.attempts.get_mut("test").unwrap().clear();
+        limiter.cleanup();
+        assert!(limiter.attempts.is_empty());
+    }
+}
