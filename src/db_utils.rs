@@ -9,89 +9,6 @@ pub struct DbUtils {
     pool: SqlitePool,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use anyhow::Result;
-
-    #[tokio::test]
-    async fn test_user_pending_and_group_flows() -> Result<()> {
-        let db = DbUtils::new(":memory:").await?;
-        // Test add/get user
-        assert!(db.add_user("alice", "pk1").await?);
-        assert!(!db.add_user("alice", "pk1").await?);
-        let u = db.get_user_by_username("alice").await?;
-        assert_eq!(u, Some(("alice".to_string(), "pk1".to_string())));
-
-        // Test pending users
-        assert!(db.add_pending_user("bob", "pk2").await?);
-        assert!(!db.add_pending_user("bob", "pk2").await?);
-        let p = db.get_pending_user("bob").await?;
-        assert_eq!(p, Some("pk2".to_string()));
-        assert!(db.remove_pending_user("bob").await?);
-
-        // Test group flows
-        assert!(
-            db.create_group("g1", "Group1", "alice", true, false)
-                .await?
-        );
-        assert!(db.is_group_public("g1").await?);
-        assert!(db.add_group_member("g1", "alice").await?);
-        let members = db.get_group_members("g1").await?;
-        assert_eq!(members, vec!["alice".to_string()]);
-        assert!(db.is_user_admin("g1", "alice").await?);
-        let groups = db.get_groups_for_user("alice").await?;
-        assert_eq!(groups, vec!["g1".to_string()]);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_message_store_and_fetch() -> Result<()> {
-        let db = DbUtils::new(":memory:").await?;
-
-        // Add a user first (foreign key constraint)
-        db.add_user("alice", "pk1").await?;
-        db.add_user("bob", "pk2").await?;
-
-        // Initially no messages
-        let latest = db.get_latest_message_id().await?;
-        assert_eq!(latest, 0);
-
-        // Store some messages
-        let id1 = db.store_message("alice", "encrypted_msg_1").await?;
-        let id2 = db.store_message("bob", "encrypted_msg_2").await?;
-        let id3 = db.store_message("alice", "encrypted_msg_3").await?;
-
-        assert_eq!(id1, 1);
-        assert_eq!(id2, 2);
-        assert_eq!(id3, 3);
-
-        // Latest message ID should be 3
-        let latest = db.get_latest_message_id().await?;
-        assert_eq!(latest, 3);
-
-        // Fetch all messages (since 0)
-        let msgs = db.get_messages_since(0).await?;
-        assert_eq!(msgs.len(), 3);
-        assert_eq!(msgs[0].1, "alice");
-        assert_eq!(msgs[0].2, "encrypted_msg_1");
-        assert_eq!(msgs[1].1, "bob");
-        assert_eq!(msgs[2].1, "alice");
-
-        // Fetch messages since id 1 (should get 2 and 3)
-        let msgs = db.get_messages_since(1).await?;
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(msgs[0].0, 2);
-        assert_eq!(msgs[1].0, 3);
-
-        // Fetch messages since id 3 (should get none)
-        let msgs = db.get_messages_since(3).await?;
-        assert_eq!(msgs.len(), 0);
-
-        Ok(())
-    }
-}
-
 #[allow(dead_code)]
 impl DbUtils {
     /// Open or create the SQLite database at the specified path.
@@ -413,21 +330,23 @@ impl DbUtils {
     pub async fn store_message(&self, sender: &str, ciphertext: &str) -> Result<i64> {
         log::info!("store_message: sender={}", sender);
         let timestamp = chrono::Utc::now().to_rfc3339();
-        let res = sqlx::query(
-            "INSERT INTO messages (sender, ciphertext, timestamp) VALUES (?, ?, ?)",
-        )
-        .bind(sender)
-        .bind(ciphertext)
-        .bind(&timestamp)
-        .execute(&self.pool)
-        .await?;
+        let res =
+            sqlx::query("INSERT INTO messages (sender, ciphertext, timestamp) VALUES (?, ?, ?)")
+                .bind(sender)
+                .bind(ciphertext)
+                .bind(&timestamp)
+                .execute(&self.pool)
+                .await?;
         let id = res.last_insert_rowid();
         log::info!("store_message: id={}", id);
         Ok(id)
     }
 
     /// Fetch messages with ID greater than `since_id`. Returns Vec<(id, sender, ciphertext, timestamp)>.
-    pub async fn get_messages_since(&self, since_id: i64) -> Result<Vec<(i64, String, String, String)>> {
+    pub async fn get_messages_since(
+        &self,
+        since_id: i64,
+    ) -> Result<Vec<(i64, String, String, String)>> {
         log::info!("get_messages_since: since_id={}", since_id);
         let rows = sqlx::query(
             "SELECT id, sender, ciphertext, timestamp FROM messages WHERE id > ? ORDER BY id ASC LIMIT 100",
@@ -489,8 +408,17 @@ impl DbUtils {
     }
 
     /// Store a Welcome message for a user to fetch later.
-    pub async fn store_welcome(&self, username: &str, group_id: &str, welcome: &[u8]) -> Result<bool> {
-        log::info!("store_welcome: username={}, group_id={}", username, group_id);
+    pub async fn store_welcome(
+        &self,
+        username: &str,
+        group_id: &str,
+        welcome: &[u8],
+    ) -> Result<bool> {
+        log::info!(
+            "store_welcome: username={}, group_id={}",
+            username,
+            group_id
+        );
         let timestamp = chrono::Utc::now().to_rfc3339();
         let res = sqlx::query(
             "INSERT OR REPLACE INTO pending_welcomes (username, group_id, welcome, created_at) VALUES (?, ?, ?, ?)",
@@ -517,17 +445,22 @@ impl DbUtils {
     /// Get a specific Welcome for a user and group.
     pub async fn get_welcome(&self, username: &str, group_id: &str) -> Result<Option<Vec<u8>>> {
         log::info!("get_welcome: username={}, group_id={}", username, group_id);
-        let row = sqlx::query("SELECT welcome FROM pending_welcomes WHERE username = ? AND group_id = ?")
-            .bind(username)
-            .bind(group_id)
-            .fetch_optional(&self.pool)
-            .await?;
+        let row =
+            sqlx::query("SELECT welcome FROM pending_welcomes WHERE username = ? AND group_id = ?")
+                .bind(username)
+                .bind(group_id)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.map(|r| r.get(0)))
     }
 
     /// Remove a Welcome after it has been fetched.
     pub async fn remove_welcome(&self, username: &str, group_id: &str) -> Result<bool> {
-        log::info!("remove_welcome: username={}, group_id={}", username, group_id);
+        log::info!(
+            "remove_welcome: username={}, group_id={}",
+            username,
+            group_id
+        );
         let res = sqlx::query("DELETE FROM pending_welcomes WHERE username = ? AND group_id = ?")
             .bind(username)
             .bind(group_id)
@@ -562,8 +495,19 @@ impl DbUtils {
     }
 
     /// Buffer a commit message for epoch sync.
-    pub async fn buffer_commit(&self, group_id: &str, epoch: i64, commit_msg: &[u8], sender: &str) -> Result<i64> {
-        log::info!("buffer_commit: group_id={}, epoch={}, sender={}", group_id, epoch, sender);
+    pub async fn buffer_commit(
+        &self,
+        group_id: &str,
+        epoch: i64,
+        commit_msg: &[u8],
+        sender: &str,
+    ) -> Result<i64> {
+        log::info!(
+            "buffer_commit: group_id={}, epoch={}, sender={}",
+            group_id,
+            epoch,
+            sender
+        );
         let timestamp = chrono::Utc::now().to_rfc3339();
         let res = sqlx::query(
             "INSERT INTO buffered_commits (group_id, epoch, commit_msg, sender, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -579,8 +523,16 @@ impl DbUtils {
     }
 
     /// Get buffered commits since a given epoch (for catch-up). Returns Vec<(epoch, commit_msg, sender)>.
-    pub async fn get_commits_since_epoch(&self, group_id: &str, since_epoch: i64) -> Result<Vec<(i64, Vec<u8>, String)>> {
-        log::info!("get_commits_since_epoch: group_id={}, since_epoch={}", group_id, since_epoch);
+    pub async fn get_commits_since_epoch(
+        &self,
+        group_id: &str,
+        since_epoch: i64,
+    ) -> Result<Vec<(i64, Vec<u8>, String)>> {
+        log::info!(
+            "get_commits_since_epoch: group_id={}, since_epoch={}",
+            group_id,
+            since_epoch
+        );
         let rows = sqlx::query(
             "SELECT epoch, commit_msg, sender FROM buffered_commits WHERE group_id = ? AND epoch > ? ORDER BY epoch ASC",
         )
@@ -588,12 +540,25 @@ impl DbUtils {
         .bind(since_epoch)
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(|r| (r.get(0), r.get(1), r.get(2))).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| (r.get(0), r.get(1), r.get(2)))
+            .collect())
     }
 
     /// Update or insert a member's epoch.
-    pub async fn update_member_epoch(&self, group_id: &str, username: &str, epoch: i64) -> Result<bool> {
-        log::info!("update_member_epoch: group_id={}, username={}, epoch={}", group_id, username, epoch);
+    pub async fn update_member_epoch(
+        &self,
+        group_id: &str,
+        username: &str,
+        epoch: i64,
+    ) -> Result<bool> {
+        log::info!(
+            "update_member_epoch: group_id={}, username={}, epoch={}",
+            group_id,
+            username,
+            epoch
+        );
         let res = sqlx::query(
             "INSERT OR REPLACE INTO member_epochs (group_id, username, epoch) VALUES (?, ?, ?)",
         )
@@ -607,18 +572,27 @@ impl DbUtils {
 
     /// Get a member's current epoch.
     pub async fn get_member_epoch(&self, group_id: &str, username: &str) -> Result<i64> {
-        log::info!("get_member_epoch: group_id={}, username={}", group_id, username);
-        let row = sqlx::query("SELECT epoch FROM member_epochs WHERE group_id = ? AND username = ?")
-            .bind(group_id)
-            .bind(username)
-            .fetch_optional(&self.pool)
-            .await?;
+        log::info!(
+            "get_member_epoch: group_id={}, username={}",
+            group_id,
+            username
+        );
+        let row =
+            sqlx::query("SELECT epoch FROM member_epochs WHERE group_id = ? AND username = ?")
+                .bind(group_id)
+                .bind(username)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.map(|r| r.get(0)).unwrap_or(0))
     }
 
     /// Clean up old buffered commits (keep last N epochs).
     pub async fn cleanup_old_commits(&self, group_id: &str, keep_epochs: i64) -> Result<u64> {
-        log::info!("cleanup_old_commits: group_id={}, keep_epochs={}", group_id, keep_epochs);
+        log::info!(
+            "cleanup_old_commits: group_id={}, keep_epochs={}",
+            group_id,
+            keep_epochs
+        );
         let current_epoch = self.get_group_epoch(group_id).await?;
         let cutoff = current_epoch.saturating_sub(keep_epochs);
         let res = sqlx::query("DELETE FROM buffered_commits WHERE group_id = ? AND epoch < ?")
@@ -626,7 +600,93 @@ impl DbUtils {
             .bind(cutoff)
             .execute(&self.pool)
             .await?;
-        log::info!("cleanup_old_commits: deleted {} commits", res.rows_affected());
+        log::info!(
+            "cleanup_old_commits: deleted {} commits",
+            res.rows_affected()
+        );
         Ok(res.rows_affected())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_user_pending_and_group_flows() -> Result<()> {
+        let db = DbUtils::new(":memory:").await?;
+        // Test add/get user
+        assert!(db.add_user("alice", "pk1").await?);
+        assert!(!db.add_user("alice", "pk1").await?);
+        let u = db.get_user_by_username("alice").await?;
+        assert_eq!(u, Some(("alice".to_string(), "pk1".to_string())));
+
+        // Test pending users
+        assert!(db.add_pending_user("bob", "pk2").await?);
+        assert!(!db.add_pending_user("bob", "pk2").await?);
+        let p = db.get_pending_user("bob").await?;
+        assert_eq!(p, Some("pk2".to_string()));
+        assert!(db.remove_pending_user("bob").await?);
+
+        // Test group flows
+        assert!(
+            db.create_group("g1", "Group1", "alice", true, false)
+                .await?
+        );
+        assert!(db.is_group_public("g1").await?);
+        assert!(db.add_group_member("g1", "alice").await?);
+        let members = db.get_group_members("g1").await?;
+        assert_eq!(members, vec!["alice".to_string()]);
+        assert!(db.is_user_admin("g1", "alice").await?);
+        let groups = db.get_groups_for_user("alice").await?;
+        assert_eq!(groups, vec!["g1".to_string()]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_message_store_and_fetch() -> Result<()> {
+        let db = DbUtils::new(":memory:").await?;
+
+        // Add a user first (foreign key constraint)
+        db.add_user("alice", "pk1").await?;
+        db.add_user("bob", "pk2").await?;
+
+        // Initially no messages
+        let latest = db.get_latest_message_id().await?;
+        assert_eq!(latest, 0);
+
+        // Store some messages
+        let id1 = db.store_message("alice", "encrypted_msg_1").await?;
+        let id2 = db.store_message("bob", "encrypted_msg_2").await?;
+        let id3 = db.store_message("alice", "encrypted_msg_3").await?;
+
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+        assert_eq!(id3, 3);
+
+        // Latest message ID should be 3
+        let latest = db.get_latest_message_id().await?;
+        assert_eq!(latest, 3);
+
+        // Fetch all messages (since 0)
+        let msgs = db.get_messages_since(0).await?;
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs[0].1, "alice");
+        assert_eq!(msgs[0].2, "encrypted_msg_1");
+        assert_eq!(msgs[1].1, "bob");
+        assert_eq!(msgs[2].1, "alice");
+
+        // Fetch messages since id 1 (should get 2 and 3)
+        let msgs = db.get_messages_since(1).await?;
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0].0, 2);
+        assert_eq!(msgs[1].0, 3);
+
+        // Fetch messages since id 3 (should get none)
+        let msgs = db.get_messages_since(3).await?;
+        assert_eq!(msgs.len(), 0);
+
+        Ok(())
     }
 }

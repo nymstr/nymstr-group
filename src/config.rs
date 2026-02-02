@@ -47,7 +47,10 @@ impl GroupConfig {
         if config_path.exists() {
             Self::load(config_path)
         } else {
-            log::info!("No config found at {:?}, starting interactive setup", config_path);
+            log::info!(
+                "No config found at {:?}, starting interactive setup",
+                config_path
+            );
             let config = Self::create_interactive()?;
             config.save(config_path)?;
             Ok(config)
@@ -58,8 +61,8 @@ impl GroupConfig {
     pub fn load(config_path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(config_path)
             .with_context(|| format!("Failed to read config from {:?}", config_path))?;
-        let config: GroupConfig = toml::from_str(&content)
-            .with_context(|| "Failed to parse config TOML")?;
+        let config: GroupConfig =
+            toml::from_str(&content).with_context(|| "Failed to parse config TOML")?;
         log::info!("Loaded config for group '{}'", config.group_id);
         Ok(config)
     }
@@ -69,8 +72,7 @@ impl GroupConfig {
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let content = toml::to_string_pretty(self)
-            .with_context(|| "Failed to serialize config")?;
+        let content = toml::to_string_pretty(self).with_context(|| "Failed to serialize config")?;
         std::fs::write(config_path, content)
             .with_context(|| format!("Failed to write config to {:?}", config_path))?;
         log::info!("Saved config to {:?}", config_path);
@@ -92,16 +94,21 @@ impl GroupConfig {
 
         let is_public = prompt_yes_no("Make group publicly discoverable?", true)?;
 
-        let discovery_server = prompt_optional(
-            "Discovery server Nym address (optional, press Enter to skip)"
-        )?;
+        let discovery_server =
+            prompt_optional("Discovery server Nym address (optional, press Enter to skip)")?;
 
         println!("\n=== Configuration Summary ===");
         println!("  Group ID: {}", group_id);
         println!("  Name: {}", name);
-        println!("  Description: {}", description.as_deref().unwrap_or("(none)"));
+        println!(
+            "  Description: {}",
+            description.as_deref().unwrap_or("(none)")
+        );
         println!("  Public: {}", is_public);
-        println!("  Discovery Server: {}", discovery_server.as_deref().unwrap_or("(none)"));
+        println!(
+            "  Discovery Server: {}",
+            discovery_server.as_deref().unwrap_or("(none)")
+        );
         println!();
 
         if !prompt_yes_no("Save this configuration?", true)? {
@@ -162,7 +169,9 @@ impl GroupConfig {
 fn is_valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 128
-        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// Prompt for required input

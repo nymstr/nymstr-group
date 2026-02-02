@@ -10,7 +10,7 @@ use pgp::composed::{
     StandaloneSignature,
 };
 use pgp::packet::{SignatureConfig, SignatureType, Subpacket, SubpacketData};
-use pgp::types::{Password, KeyDetails};
+use pgp::types::{KeyDetails, Password};
 use rand::thread_rng;
 use secrecy::{ExposeSecret, SecretString};
 use std::fs;
@@ -129,7 +129,9 @@ impl CryptoUtils {
 
         // Encrypt and store the private key
         let encrypted = self.encrypt_private_key(secret_key_armored.as_bytes())?;
-        let priv_path = self.key_dir.join(format!("{}_private_key.enc", self.username));
+        let priv_path = self
+            .key_dir
+            .join(format!("{}_private_key.enc", self.username));
         let pub_path = self.key_dir.join(format!("{}_public.asc", self.username));
         fs::write(priv_path, encrypted)?;
         fs::write(&pub_path, &public_key_armored)?;
@@ -139,7 +141,9 @@ impl CryptoUtils {
 
     /// Load and decrypt the private key.
     fn load_private_key(&self) -> Result<SignedSecretKey> {
-        let path = self.key_dir.join(format!("{}_private_key.enc", self.username));
+        let path = self
+            .key_dir
+            .join(format!("{}_private_key.enc", self.username));
         let encrypted = fs::read_to_string(path)?;
         let decrypted = self.decrypt_private_key(&encrypted)?;
         let armored_key = String::from_utf8(decrypted)?;
@@ -174,9 +178,9 @@ impl CryptoUtils {
             ))?,
         ];
 
-        config.unhashed_subpackets = vec![
-            Subpacket::regular(SubpacketData::Issuer(secret_key.primary_key.key_id()))?
-        ];
+        config.unhashed_subpackets = vec![Subpacket::regular(SubpacketData::Issuer(
+            secret_key.primary_key.key_id(),
+        ))?];
 
         let signature = config.sign(
             &secret_key.primary_key,

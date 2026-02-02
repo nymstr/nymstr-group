@@ -56,7 +56,10 @@ impl RegisterRequest {
     fn from_legacy(data: &Value) -> Option<Self> {
         let username = data.get("username").and_then(Value::as_str)?.to_string();
         let public_key = data.get("publicKey").and_then(Value::as_str)?.to_string();
-        let server_address = data.get("serverAddress").and_then(Value::as_str)?.to_string();
+        let server_address = data
+            .get("serverAddress")
+            .and_then(Value::as_str)?
+            .to_string();
         let timestamp = data.get("timestamp").and_then(Value::as_i64)?;
         let signature = data.get("signature").and_then(Value::as_str)?.to_string();
 
@@ -64,7 +67,7 @@ impl RegisterRequest {
             .get("keyPackage")
             .and_then(Value::as_str)
             .and_then(|kp| {
-                use base64::{Engine as _, engine::general_purpose::STANDARD};
+                use base64::{engine::general_purpose::STANDARD, Engine as _};
                 STANDARD.decode(kp).ok()
             });
 
@@ -85,15 +88,21 @@ impl RegisterRequest {
             .and_then(Value::as_str)
             .unwrap_or(sender_username)
             .to_string();
-        let public_key = payload.get("publicKey").and_then(Value::as_str)?.to_string();
-        let server_address = payload.get("serverAddress").and_then(Value::as_str)?.to_string();
+        let public_key = payload
+            .get("publicKey")
+            .and_then(Value::as_str)?
+            .to_string();
+        let server_address = payload
+            .get("serverAddress")
+            .and_then(Value::as_str)?
+            .to_string();
         let timestamp = payload.get("timestamp").and_then(Value::as_i64)?;
 
         let key_package = payload
             .get("keyPackage")
             .and_then(Value::as_str)
             .and_then(|kp| {
-                use base64::{Engine as _, engine::general_purpose::STANDARD};
+                use base64::{engine::general_purpose::STANDARD, Engine as _};
                 STANDARD.decode(kp).ok()
             });
 
@@ -114,7 +123,10 @@ impl ApproveGroupRequest {
         let username = data.get("username").and_then(Value::as_str)?.to_string();
         let signature = data.get("signature").and_then(Value::as_str)?.to_string();
 
-        Some(Self { username, signature })
+        Some(Self {
+            username,
+            signature,
+        })
     }
 
     /// Parse from unified format
@@ -135,12 +147,19 @@ impl SendGroupRequest {
         let ciphertext = data.get("ciphertext").and_then(Value::as_str)?.to_string();
         let signature = data.get("signature").and_then(Value::as_str)?.to_string();
 
-        Some(Self { username, ciphertext, signature })
+        Some(Self {
+            username,
+            ciphertext,
+            signature,
+        })
     }
 
     /// Parse from unified format
     fn from_unified(payload: &Value, sender_username: &str, signature: &str) -> Option<Self> {
-        let ciphertext = payload.get("ciphertext").and_then(Value::as_str)?.to_string();
+        let ciphertext = payload
+            .get("ciphertext")
+            .and_then(Value::as_str)?
+            .to_string();
 
         Some(Self {
             username: sender_username.to_string(),
@@ -161,7 +180,11 @@ impl FetchGroupRequest {
             _ => 0,
         };
 
-        Some(Self { username, last_seen_id, signature })
+        Some(Self {
+            username,
+            last_seen_id,
+            signature,
+        })
     }
 
     /// Parse from unified format
@@ -179,7 +202,6 @@ impl FetchGroupRequest {
         })
     }
 }
-
 
 /// Handler for incoming mixnet messages and command processing for group chat server.
 ///
@@ -278,45 +300,94 @@ impl MessageUtils {
             // Unified format
             if let Some(action) = data.get("action").and_then(Value::as_str) {
                 let payload = data.get("payload").unwrap_or(&Value::Null);
-                let sender_username = data.get("sender").and_then(Value::as_str).unwrap_or("unknown");
+                let sender_username = data
+                    .get("sender")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
                 let signature = data.get("signature").and_then(Value::as_str).unwrap_or("");
 
-                log::info!("Processing unified format - action: '{}', sender: '{}'", action, sender_username);
+                log::info!(
+                    "Processing unified format - action: '{}', sender: '{}'",
+                    action,
+                    sender_username
+                );
 
                 match action {
                     "register" => {
-                        if let Some(req) = RegisterRequest::from_unified(payload, sender_username, signature) {
+                        if let Some(req) =
+                            RegisterRequest::from_unified(payload, sender_username, signature)
+                        {
                             self.handle_register_core(req, sender_tag).await;
                         } else {
-                            self.send_encapsulated_reply(sender_tag, "error: missing required fields".into(), "registerResponse", None).await;
+                            self.send_encapsulated_reply(
+                                sender_tag,
+                                "error: missing required fields".into(),
+                                "registerResponse",
+                                None,
+                            )
+                            .await;
                         }
                     }
                     "approveGroup" => {
                         if let Some(req) = ApproveGroupRequest::from_unified(payload, signature) {
                             self.handle_approve_group_core(req, sender_tag).await;
                         } else {
-                            self.send_encapsulated_reply(sender_tag, "error: missing required fields".into(), "approveGroupResponse", None).await;
+                            self.send_encapsulated_reply(
+                                sender_tag,
+                                "error: missing required fields".into(),
+                                "approveGroupResponse",
+                                None,
+                            )
+                            .await;
                         }
                     }
                     "sendGroup" => {
-                        if let Some(req) = SendGroupRequest::from_unified(payload, sender_username, signature) {
+                        if let Some(req) =
+                            SendGroupRequest::from_unified(payload, sender_username, signature)
+                        {
                             self.handle_send_group_core(req, sender_tag).await;
                         } else {
-                            self.send_encapsulated_reply(sender_tag, "error: missing ciphertext".into(), "sendGroupResponse", None).await;
+                            self.send_encapsulated_reply(
+                                sender_tag,
+                                "error: missing ciphertext".into(),
+                                "sendGroupResponse",
+                                None,
+                            )
+                            .await;
                         }
                     }
                     "fetchGroup" => {
-                        if let Some(req) = FetchGroupRequest::from_unified(payload, sender_username, signature) {
+                        if let Some(req) =
+                            FetchGroupRequest::from_unified(payload, sender_username, signature)
+                        {
                             self.handle_fetch_group_core(req, sender_tag).await;
                         } else {
-                            self.send_encapsulated_reply(sender_tag, "error: missing credentials".into(), "fetchGroupResponse", None).await;
+                            self.send_encapsulated_reply(
+                                sender_tag,
+                                "error: missing credentials".into(),
+                                "fetchGroupResponse",
+                                None,
+                            )
+                            .await;
                         }
                     }
                     // MLS Delivery Service actions
-                    "storeWelcome" => self.handle_store_welcome(payload, sender_tag, sender_username, signature).await,
-                    "fetchWelcome" => self.handle_fetch_welcome(payload, sender_tag, sender_username, signature).await,
-                    "syncEpoch" => self.handle_sync_epoch(payload, sender_tag, sender_username, signature).await,
-                    "bufferCommit" => self.handle_buffer_commit(payload, sender_tag, sender_username, signature).await,
+                    "storeWelcome" => {
+                        self.handle_store_welcome(payload, sender_tag, sender_username, signature)
+                            .await
+                    }
+                    "fetchWelcome" => {
+                        self.handle_fetch_welcome(payload, sender_tag, sender_username, signature)
+                            .await
+                    }
+                    "syncEpoch" => {
+                        self.handle_sync_epoch(payload, sender_tag, sender_username, signature)
+                            .await
+                    }
+                    "bufferCommit" => {
+                        self.handle_buffer_commit(payload, sender_tag, sender_username, signature)
+                            .await
+                    }
                     _ => log::error!("Unknown unified action: {}", action),
                 }
             } else {
@@ -386,7 +457,10 @@ impl MessageUtils {
         };
 
         // Verify signature
-        if !self.crypto.verify_pgp_signature(&public_key, signed_content, &auth.signature) {
+        if !self
+            .crypto
+            .verify_pgp_signature(&public_key, signed_content, &auth.signature)
+        {
             self.send_encapsulated_reply(
                 sender_tag,
                 "error: bad signature".into(),
@@ -423,7 +497,10 @@ impl MessageUtils {
         // Rate limit check for registration attempts
         let rate_key = sender_tag.to_string();
         if !self.rate_limiter.check_and_record(&rate_key) {
-            log::warn!("Rate limit exceeded for registration from sender_tag={:?}", sender_tag);
+            log::warn!(
+                "Rate limit exceeded for registration from sender_tag={:?}",
+                sender_tag
+            );
             self.send_encapsulated_reply(
                 sender_tag,
                 "error: rate limit exceeded, please try again later".into(),
@@ -475,7 +552,10 @@ impl MessageUtils {
         }
 
         // Verify signature over: "register:{username}:{server_address}:{timestamp}"
-        let signed_content = format!("register:{}:{}:{}", req.username, req.server_address, req.timestamp);
+        let signed_content = format!(
+            "register:{}:{}:{}",
+            req.username, req.server_address, req.timestamp
+        );
         if !self
             .crypto
             .verify_pgp_signature(&req.public_key, &signed_content, &req.signature)
@@ -492,7 +572,9 @@ impl MessageUtils {
         }
 
         // Check if this is the admin (auto-approve)
-        let is_admin = self.admin_public_key.as_ref()
+        let is_admin = self
+            .admin_public_key
+            .as_ref()
             .map(|admin_key| admin_key.trim() == req.public_key.trim())
             .unwrap_or(false);
 
@@ -503,7 +585,11 @@ impl MessageUtils {
                     // Store KeyPackage if provided
                     if let Some(kp) = &req.key_package {
                         if let Err(e) = self.db.store_key_package(&req.username, kp).await {
-                            log::warn!("Failed to store KeyPackage for admin {}: {}", req.username, e);
+                            log::warn!(
+                                "Failed to store KeyPackage for admin {}: {}",
+                                req.username,
+                                e
+                            );
                         }
                     }
                     log::info!("Admin {} auto-approved and registered", req.username);
@@ -537,7 +623,11 @@ impl MessageUtils {
             }
         } else {
             // Regular user - add to pending
-            match self.db.add_pending_user(&req.username, &req.public_key).await {
+            match self
+                .db
+                .add_pending_user(&req.username, &req.public_key)
+                .await
+            {
                 Ok(true) => {
                     // Store KeyPackage if provided (for later use when approved)
                     if let Some(kp) = &req.key_package {
@@ -596,7 +686,11 @@ impl MessageUtils {
     }
 
     /// Core implementation for approve group - handles both legacy and unified formats.
-    async fn handle_approve_group_core(&mut self, req: ApproveGroupRequest, sender_tag: AnonymousSenderTag) {
+    async fn handle_approve_group_core(
+        &mut self,
+        req: ApproveGroupRequest,
+        sender_tag: AnonymousSenderTag,
+    ) {
         // Validate signature is present
         if req.signature.is_empty() {
             self.send_encapsulated_reply(
@@ -623,7 +717,10 @@ impl MessageUtils {
             }
         };
 
-        if !self.crypto.verify_pgp_signature(admin_key, &req.username, &req.signature) {
+        if !self
+            .crypto
+            .verify_pgp_signature(admin_key, &req.username, &req.signature)
+        {
             self.send_encapsulated_reply(
                 sender_tag,
                 "error: unauthorized or bad signature".into(),
@@ -661,26 +758,23 @@ impl MessageUtils {
 
                 // Build response with KeyPackage if available
                 let response = if let Some(kp) = key_package {
-                    use base64::{Engine as _, engine::general_purpose::STANDARD};
+                    use base64::{engine::general_purpose::STANDARD, Engine as _};
                     json!({
                         "status": "success",
                         "username": req.username,
                         "keyPackage": STANDARD.encode(&kp)
-                    }).to_string()
+                    })
+                    .to_string()
                 } else {
                     json!({
                         "status": "success",
                         "username": req.username
-                    }).to_string()
+                    })
+                    .to_string()
                 };
 
-                self.send_encapsulated_reply(
-                    sender_tag,
-                    response,
-                    "approveGroupResponse",
-                    None,
-                )
-                .await;
+                self.send_encapsulated_reply(sender_tag, response, "approveGroupResponse", None)
+                    .await;
             }
             _ => {
                 self.send_encapsulated_reply(
@@ -713,7 +807,11 @@ impl MessageUtils {
     }
 
     /// Core implementation for send group - handles both legacy and unified formats.
-    async fn handle_send_group_core(&mut self, req: SendGroupRequest, sender_tag: AnonymousSenderTag) {
+    async fn handle_send_group_core(
+        &mut self,
+        req: SendGroupRequest,
+        sender_tag: AnonymousSenderTag,
+    ) {
         // Validate ciphertext is present
         if req.ciphertext.is_empty() {
             self.send_encapsulated_reply(
@@ -782,7 +880,11 @@ impl MessageUtils {
     }
 
     /// Core implementation for fetch group - handles both legacy and unified formats.
-    async fn handle_fetch_group_core(&mut self, req: FetchGroupRequest, sender_tag: AnonymousSenderTag) {
+    async fn handle_fetch_group_core(
+        &mut self,
+        req: FetchGroupRequest,
+        sender_tag: AnonymousSenderTag,
+    ) {
         // Authenticate: signature should be over the lastSeenId
         let signed_content = req.last_seen_id.to_string();
         let auth = AuthRequest {
@@ -929,10 +1031,8 @@ impl MessageUtils {
         };
 
         // Decode the welcome from base64
-        let welcome_bytes = match {
-            use base64::{Engine as _, engine::general_purpose::STANDARD};
-            STANDARD.decode(welcome_b64)
-        } {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let welcome_bytes = match STANDARD.decode(welcome_b64) {
             Ok(bytes) => bytes,
             Err(_) => {
                 self.send_encapsulated_reply(
@@ -961,9 +1061,17 @@ impl MessageUtils {
         }
 
         // Store the welcome
-        match self.db.store_welcome(target_username, group_id, &welcome_bytes).await {
+        match self
+            .db
+            .store_welcome(target_username, group_id, &welcome_bytes)
+            .await
+        {
             Ok(true) => {
-                log::info!("Stored Welcome for user {} in group {}", target_username, group_id);
+                log::info!(
+                    "Stored Welcome for user {} in group {}",
+                    target_username,
+                    group_id
+                );
                 self.send_encapsulated_reply(
                     sender_tag,
                     json!({"status": "success"}).to_string(),
@@ -1014,21 +1122,32 @@ impl MessageUtils {
             // Fetch specific welcome
             match self.db.get_welcome(sender_username, gid).await {
                 Ok(Some(welcome_bytes)) => {
-                    use base64::{Engine as _, engine::general_purpose::STANDARD};
+                    use base64::{engine::general_purpose::STANDARD, Engine as _};
                     let response = json!({
                         "welcomes": [{
                             "groupId": gid,
                             "welcome": STANDARD.encode(&welcome_bytes)
                         }]
-                    }).to_string();
+                    })
+                    .to_string();
 
                     // Remove the welcome after fetching
                     if let Err(e) = self.db.remove_welcome(sender_username, gid).await {
-                        log::warn!("Failed to remove welcome for user {} in group {}: {}", sender_username, gid, e);
+                        log::warn!(
+                            "Failed to remove welcome for user {} in group {}: {}",
+                            sender_username,
+                            gid,
+                            e
+                        );
                     }
 
-                    self.send_encapsulated_reply(sender_tag, response, "fetchWelcomeResponse", None)
-                        .await;
+                    self.send_encapsulated_reply(
+                        sender_tag,
+                        response,
+                        "fetchWelcomeResponse",
+                        None,
+                    )
+                    .await;
                 }
                 Ok(None) => {
                     self.send_encapsulated_reply(
@@ -1054,7 +1173,7 @@ impl MessageUtils {
             // Fetch all welcomes for this user
             match self.db.get_pending_welcomes(sender_username).await {
                 Ok(welcomes) => {
-                    use base64::{Engine as _, engine::general_purpose::STANDARD};
+                    use base64::{engine::general_purpose::STANDARD, Engine as _};
                     let formatted: Vec<Value> = welcomes
                         .iter()
                         .map(|(gid, welcome_bytes)| {
@@ -1068,13 +1187,23 @@ impl MessageUtils {
                     // Remove fetched welcomes
                     for (gid, _) in &welcomes {
                         if let Err(e) = self.db.remove_welcome(sender_username, gid).await {
-                            log::warn!("Failed to remove welcome for user {} in group {}: {}", sender_username, gid, e);
+                            log::warn!(
+                                "Failed to remove welcome for user {} in group {}: {}",
+                                sender_username,
+                                gid,
+                                e
+                            );
                         }
                     }
 
                     let response = json!({"welcomes": formatted}).to_string();
-                    self.send_encapsulated_reply(sender_tag, response, "fetchWelcomeResponse", None)
-                        .await;
+                    self.send_encapsulated_reply(
+                        sender_tag,
+                        response,
+                        "fetchWelcomeResponse",
+                        None,
+                    )
+                    .await;
                 }
                 Err(e) => {
                     log::error!("Failed to fetch welcomes: {}", e);
@@ -1134,7 +1263,7 @@ impl MessageUtils {
         // Get commits since the given epoch
         match self.db.get_commits_since_epoch(group_id, since_epoch).await {
             Ok(commits) => {
-                use base64::{Engine as _, engine::general_purpose::STANDARD};
+                use base64::{engine::general_purpose::STANDARD, Engine as _};
                 let formatted: Vec<Value> = commits
                     .into_iter()
                     .map(|(epoch, commit_bytes, sender)| {
@@ -1152,11 +1281,21 @@ impl MessageUtils {
                 let response = json!({
                     "currentEpoch": current_epoch,
                     "commits": formatted
-                }).to_string();
+                })
+                .to_string();
 
                 // Update the member's tracked epoch
-                if let Err(e) = self.db.update_member_epoch(group_id, sender_username, current_epoch).await {
-                    log::warn!("Failed to update member epoch for {} in group {}: {}", sender_username, group_id, e);
+                if let Err(e) = self
+                    .db
+                    .update_member_epoch(group_id, sender_username, current_epoch)
+                    .await
+                {
+                    log::warn!(
+                        "Failed to update member epoch for {} in group {}: {}",
+                        sender_username,
+                        group_id,
+                        e
+                    );
                 }
 
                 self.send_encapsulated_reply(sender_tag, response, "syncEpochResponse", None)
@@ -1227,10 +1366,8 @@ impl MessageUtils {
         };
 
         // Decode commit from base64
-        let commit_bytes = match {
-            use base64::{Engine as _, engine::general_purpose::STANDARD};
-            STANDARD.decode(commit_b64)
-        } {
+        use base64::{engine::general_purpose::STANDARD as STANDARD2, Engine as _};
+        let commit_bytes = match STANDARD2.decode(commit_b64) {
             Ok(bytes) => bytes,
             Err(_) => {
                 self.send_encapsulated_reply(
@@ -1259,7 +1396,11 @@ impl MessageUtils {
         }
 
         // Buffer the commit
-        match self.db.buffer_commit(group_id, epoch, &commit_bytes, sender_username).await {
+        match self
+            .db
+            .buffer_commit(group_id, epoch, &commit_bytes, sender_username)
+            .await
+        {
             Ok(_) => {
                 // Update group epoch if this is newer
                 let current = self.db.get_group_epoch(group_id).await.unwrap_or(0);
@@ -1271,7 +1412,11 @@ impl MessageUtils {
 
                 // Clean up old commits (keep last 100 epochs)
                 if let Err(e) = self.db.cleanup_old_commits(group_id, 100).await {
-                    log::warn!("Failed to cleanup old commits for group {}: {}", group_id, e);
+                    log::warn!(
+                        "Failed to cleanup old commits for group {}: {}",
+                        group_id,
+                        e
+                    );
                 }
 
                 log::info!("Buffered commit for group {} at epoch {}", group_id, epoch);

@@ -11,7 +11,7 @@ use crate::db_utils::DbUtils;
 use crate::log_config::init_logging;
 use crate::message_utils::MessageUtils;
 use nym_sdk::mixnet::{MixnetClientBuilder, MixnetMessageSender, StoragePaths};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio_stream::StreamExt;
 
 /// Attempts to extract a challenge nonce from a message.
@@ -23,7 +23,10 @@ fn try_extract_challenge_nonce(raw: &str) -> Option<String> {
     }
     let content = data.get("content").and_then(|v| v.as_str())?;
     let challenge: serde_json::Value = serde_json::from_str(content).ok()?;
-    challenge.get("nonce").and_then(|v| v.as_str()).map(|s| s.to_string())
+    challenge
+        .get("nonce")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 /// Attempts to extract registration response content from a message.
@@ -33,7 +36,9 @@ fn try_extract_register_response(raw: &str) -> Option<String> {
     if data.get("action").and_then(|v| v.as_str()) != Some("registerGroupResponse") {
         return None;
     }
-    data.get("content").and_then(|v| v.as_str()).map(|s| s.to_string())
+    data.get("content")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn print_usage() {
@@ -99,10 +104,14 @@ async fn main() -> anyhow::Result<()> {
     // Handle --register
     if do_register {
         if !group_config.has_admin() {
-            return Err(anyhow::anyhow!("Admin not set. Use --set-admin <path> first."));
+            return Err(anyhow::anyhow!(
+                "Admin not set. Use --set-admin <path> first."
+            ));
         }
         if group_config.discovery_server.is_none() {
-            return Err(anyhow::anyhow!("Discovery server not configured. Edit config file to add discovery_server."));
+            return Err(anyhow::anyhow!(
+                "Discovery server not configured. Edit config file to add discovery_server."
+            ));
         }
         if group_config.registered {
             log::info!("Group is already registered with discovery server.");
@@ -117,8 +126,11 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Run the registration flow with discovery server
-async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> anyhow::Result<()> {
-    println!("Registering group '{}' with discovery server...", config.group_id);
+async fn run_registration(config: &mut GroupConfig, config_path: &Path) -> anyhow::Result<()> {
+    println!(
+        "Registering group '{}' with discovery server...",
+        config.group_id
+    );
 
     // Initialize logging
     let log_file = std::env::var("LOG_FILE_PATH").unwrap_or_else(|_| "logs/groupd.log".to_string());
@@ -130,8 +142,8 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
     // Setup crypto
     let keys_dir = std::env::var("KEYS_DIR").unwrap_or_else(|_| "storage/keys".to_string());
     std::fs::create_dir_all(&keys_dir)?;
-    let secret_path = std::env::var("SECRET_PATH")
-        .unwrap_or_else(|_| "secrets/encryption_password".to_string());
+    let secret_path =
+        std::env::var("SECRET_PATH").unwrap_or_else(|_| "secrets/encryption_password".to_string());
     let secret_path_buf = PathBuf::from(&secret_path);
     if let Some(parent) = secret_path_buf.parent() {
         std::fs::create_dir_all(parent)?;
@@ -142,11 +154,19 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
         let generated = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
         std::fs::write(&secret_path_buf, &generated)?;
         #[cfg(unix)]
-        std::fs::set_permissions(&secret_path_buf, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
-        log::info!("Generated new encryption password and stored at: {}", secret_path_buf.display());
+        std::fs::set_permissions(
+            &secret_path_buf,
+            std::os::unix::fs::PermissionsExt::from_mode(0o600),
+        )?;
+        log::info!(
+            "Generated new encryption password and stored at: {}",
+            secret_path_buf.display()
+        );
         generated
     } else {
-        let pwd = std::fs::read_to_string(&secret_path_buf)?.trim().to_string();
+        let pwd = std::fs::read_to_string(&secret_path_buf)?
+            .trim()
+            .to_string();
         if pwd.is_empty() {
             anyhow::bail!(
                 "Encryption password file {} is empty. Delete it and restart to generate a new one.",
@@ -168,8 +188,8 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
     };
 
     // Connect to mixnet
-    let storage_dir = std::env::var("NYM_SDK_STORAGE")
-        .unwrap_or_else(|_| format!("storage/{}", client_id));
+    let storage_dir =
+        std::env::var("NYM_SDK_STORAGE").unwrap_or_else(|_| format!("storage/{}", client_id));
     std::fs::create_dir_all(&storage_dir)?;
     let storage_paths = StoragePaths::new_from_dir(PathBuf::from(&storage_dir))?;
     let builder = MixnetClientBuilder::new_with_default_storage(storage_paths).await?;
@@ -191,7 +211,9 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
 
     println!("Sending registration request to {}...", discovery_address);
     let recipient = discovery_address.parse()?;
-    client.send_plain_message(recipient, register_msg.to_string()).await?;
+    client
+        .send_plain_message(recipient, register_msg.to_string())
+        .await?;
 
     // Wait for challenge response
     println!("Waiting for challenge...");
@@ -205,15 +227,20 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
             }
         }
         None
-    }).await;
+    })
+    .await;
 
     let (nonce, sender_tag) = match challenge_result {
         Ok(Some((n, tag))) => (n, tag),
         Ok(None) => {
-            return Err(anyhow::anyhow!("Did not receive challenge from discovery server"));
+            return Err(anyhow::anyhow!(
+                "Did not receive challenge from discovery server"
+            ));
         }
         Err(_) => {
-            return Err(anyhow::anyhow!("Timeout waiting for challenge from discovery server"));
+            return Err(anyhow::anyhow!(
+                "Timeout waiting for challenge from discovery server"
+            ));
         }
     };
 
@@ -233,7 +260,9 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
         sender.send_reply(tag, response_msg.to_string()).await?;
     } else {
         // Fallback to sending to discovery address
-        sender.send_plain_message(recipient, response_msg.to_string()).await?;
+        sender
+            .send_plain_message(recipient, response_msg.to_string())
+            .await?;
     }
 
     // Wait for final response
@@ -246,7 +275,8 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
             }
         }
         None
-    }).await;
+    })
+    .await;
 
     match final_result {
         Ok(Some(result)) if result == "success" => {
@@ -257,15 +287,19 @@ async fn run_registration(config: &mut GroupConfig, config_path: &PathBuf) -> an
         }
         Ok(Some(result)) => {
             stream.disconnect().await;
-            return Err(anyhow::anyhow!("Registration failed: {}", result));
+            Err(anyhow::anyhow!("Registration failed: {}", result))
         }
         Ok(None) => {
             stream.disconnect().await;
-            return Err(anyhow::anyhow!("Did not receive confirmation from discovery server"));
+            Err(anyhow::anyhow!(
+                "Did not receive confirmation from discovery server"
+            ))
         }
         Err(_) => {
             stream.disconnect().await;
-            return Err(anyhow::anyhow!("Timeout waiting for registration confirmation"));
+            Err(anyhow::anyhow!(
+                "Timeout waiting for registration confirmation"
+            ))
         }
     }
 }
@@ -279,7 +313,11 @@ async fn run_server(group_config: GroupConfig) -> anyhow::Result<()> {
     }
     init_logging(&log_file)?;
 
-    log::info!("Starting group server: {} ({})", group_config.name, group_config.group_id);
+    log::info!(
+        "Starting group server: {} ({})",
+        group_config.name,
+        group_config.group_id
+    );
 
     if !group_config.has_admin() {
         log::warn!("No admin configured. Use --set-admin <path> to set admin public key.");
@@ -287,15 +325,17 @@ async fn run_server(group_config: GroupConfig) -> anyhow::Result<()> {
 
     if !group_config.registered {
         if group_config.discovery_server.is_some() {
-            log::warn!("Group not registered with discovery server. Run with --register to register.");
+            log::warn!(
+                "Group not registered with discovery server. Run with --register to register."
+            );
         } else {
             log::info!("No discovery server configured. Group will operate in standalone mode.");
         }
     }
 
     // Prepare database path
-    let db_path = std::env::var("DATABASE_PATH")
-        .unwrap_or_else(|_| "storage/groupd.db".to_string());
+    let db_path =
+        std::env::var("DATABASE_PATH").unwrap_or_else(|_| "storage/groupd.db".to_string());
     if let Some(parent) = PathBuf::from(&db_path).parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -308,8 +348,8 @@ async fn run_server(group_config: GroupConfig) -> anyhow::Result<()> {
     // Prepare key storage for signing
     let keys_dir = std::env::var("KEYS_DIR").unwrap_or_else(|_| "storage/keys".to_string());
     std::fs::create_dir_all(&keys_dir)?;
-    let secret_path = std::env::var("SECRET_PATH")
-        .unwrap_or_else(|_| "secrets/encryption_password".to_string());
+    let secret_path =
+        std::env::var("SECRET_PATH").unwrap_or_else(|_| "secrets/encryption_password".to_string());
     let secret_path_buf = PathBuf::from(&secret_path);
     if let Some(parent) = secret_path_buf.parent() {
         std::fs::create_dir_all(parent)?;
@@ -320,11 +360,19 @@ async fn run_server(group_config: GroupConfig) -> anyhow::Result<()> {
         let generated = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
         std::fs::write(&secret_path_buf, &generated)?;
         #[cfg(unix)]
-        std::fs::set_permissions(&secret_path_buf, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
-        log::info!("Generated new encryption password and stored at: {}", secret_path_buf.display());
+        std::fs::set_permissions(
+            &secret_path_buf,
+            std::os::unix::fs::PermissionsExt::from_mode(0o600),
+        )?;
+        log::info!(
+            "Generated new encryption password and stored at: {}",
+            secret_path_buf.display()
+        );
         generated
     } else {
-        let pwd = std::fs::read_to_string(&secret_path_buf)?.trim().to_string();
+        let pwd = std::fs::read_to_string(&secret_path_buf)?
+            .trim()
+            .to_string();
         if pwd.is_empty() {
             anyhow::bail!(
                 "Encryption password file {} is empty. Delete it and restart to generate a new one.",
@@ -340,12 +388,15 @@ async fn run_server(group_config: GroupConfig) -> anyhow::Result<()> {
     // Ensure the server has a PGP keypair
     let pub_key_path = PathBuf::from(&keys_dir).join(format!("{}_public.asc", client_id));
     if !pub_key_path.exists() {
-        log::info!("Server keypair not found, generating new PGP keypair for '{}'", client_id);
+        log::info!(
+            "Server keypair not found, generating new PGP keypair for '{}'",
+            client_id
+        );
         crypto.generate_key_pair(&client_id)?;
     }
 
-    let storage_dir = std::env::var("NYM_SDK_STORAGE")
-        .unwrap_or_else(|_| format!("storage/{}", client_id));
+    let storage_dir =
+        std::env::var("NYM_SDK_STORAGE").unwrap_or_else(|_| format!("storage/{}", client_id));
     std::fs::create_dir_all(&storage_dir)?;
     let storage_paths = StoragePaths::new_from_dir(PathBuf::from(&storage_dir))?;
 
